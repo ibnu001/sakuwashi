@@ -8,6 +8,7 @@ import '../../categories/providers/category_provider.dart';
 import '../data/transaction_db.dart';
 import '../data/transaction_model.dart';
 import '../providers/transaction_provider.dart';
+import 'transaction_filter_sheet.dart';
 import 'transaction_form_sheet.dart';
 
 class ExpenseListView extends ConsumerWidget {
@@ -27,10 +28,14 @@ class ExpenseListView extends ConsumerWidget {
           // ── Month Switcher ─────────────────────────────
           MonthSwitcher(
             label: monthLabel,
-            onPrev: () =>
-                ref.read(selectedMonthProvider.notifier).state = month.prev(),
-            onNext: () =>
-                ref.read(selectedMonthProvider.notifier).state = month.next(),
+            onPrev: () {
+              ref.read(dateFilterProvider.notifier).state = const DateFilter();
+              ref.read(selectedMonthProvider.notifier).state = month.prev();
+            },
+            onNext: () {
+              ref.read(dateFilterProvider.notifier).state = const DateFilter();
+              ref.read(selectedMonthProvider.notifier).state = month.next();
+            },
           ),
           // ── Total Card ─────────────────────────────────
           listAsync.when(
@@ -47,13 +52,7 @@ class ExpenseListView extends ConsumerWidget {
             error: (e, st) => const SizedBox(height: 72),
           ),
           // ── Search / Filter ────────────────────────────
-          ref.watch(expenseCategoriesProvider).when(
-                data: (cats) => SearchFilterBar(
-                  categories: cats.map((c) => c.name).toList(),
-                ),
-                loading: () => const SizedBox(height: 72),
-                error: (e, st) => const SizedBox(height: 72),
-              ),
+          const SearchFilterBar(type: 'expense'),
           // ── List ───────────────────────────────────────
           Expanded(
             child: listAsync.when(
@@ -200,63 +199,289 @@ class TotalCard extends StatelessWidget {
   }
 }
 
-class SearchFilterBar extends ConsumerWidget {
-  final List<String> categories;
+class SearchFilterBar extends ConsumerStatefulWidget {
+  final String type; // 'expense' | 'income'
 
-  const SearchFilterBar({super.key, required this.categories});
+  const SearchFilterBar({super.key, required this.type});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SearchFilterBar> createState() => _SearchFilterBarState();
+}
+
+class _SearchFilterBarState extends ConsumerState<SearchFilterBar> {
+  late final TextEditingController _searchCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl = TextEditingController(text: ref.read(searchQueryProvider));
+    _searchCtrl.addListener(() {
+      setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final activeCat = ref.watch(categoryFilterProvider);
+    final activeDate = ref.watch(dateFilterProvider);
+    final currentMonth = ref.watch(selectedMonthProvider);
+    final appColors = Theme.of(context).extension<AppColorsExtension>()!;
+    final typeColor = widget.type == 'expense'
+        ? appColors.expenseColor
+        : appColors.incomeColor;
+    final containerColor = widget.type == 'expense'
+        ? appColors.expenseContainer
+        : appColors.incomeContainer;
+
+    int activeFilterCount = 0;
+    if (activeDate.isActive) activeFilterCount++;
+    if (activeCat != null) activeFilterCount++;
+
+    final hasActiveFilter = activeFilterCount > 0;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            height: 40,
-            child: TextField(
-              onChanged: (v) =>
-                  ref.read(searchQueryProvider.notifier).state = v,
-              decoration: InputDecoration(
-                hintText: 'Cari transaksi…',
-                prefixIcon: const Icon(Icons.search, size: 20),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                  ),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(
-                    color: Theme.of(context).colorScheme.outlineVariant,
+          Row(
+            children: [
+              // Search input
+              Expanded(
+                child: SizedBox(
+                  height: 42,
+                  child: TextField(
+                    controller: _searchCtrl,
+                    onChanged: (v) =>
+                        ref.read(searchQueryProvider.notifier).state = v,
+                    decoration: InputDecoration(
+                      hintText: 'Cari transaksi…',
+                      prefixIcon: const Icon(Icons.search, size: 20),
+                      suffixIcon: _searchCtrl.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, size: 18),
+                              onPressed: () {
+                                _searchCtrl.clear();
+                                ref.read(searchQueryProvider.notifier).state =
+                                    '';
+                              },
+                              splashRadius: 16,
+                            )
+                          : null,
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: typeColor,
+                          width: 1.5,
+                        ),
+                      ),
+                    ),
+                    style: const TextStyle(fontSize: 14),
                   ),
                 ),
               ),
-              style: const TextStyle(fontSize: 14),
+              const SizedBox(width: 8),
+              // Filter Popup Trigger Button
+              Material(
+                color: hasActiveFilter
+                    ? containerColor
+                    : Theme.of(context).colorScheme.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(
+                    color: hasActiveFilter
+                        ? typeColor
+                        : Theme.of(context).colorScheme.outlineVariant,
+                    width: hasActiveFilter ? 1.5 : 1,
+                  ),
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      useSafeArea: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => TransactionFilterSheet(type: widget.type),
+                    );
+                  },
+                  child: SizedBox(
+                    width: 42,
+                    height: 42,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Icon(
+                          Icons.tune_rounded,
+                          size: 20,
+                          color: hasActiveFilter
+                              ? typeColor
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        if (hasActiveFilter)
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: typeColor,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          // Active filters chips
+          if (hasActiveFilter) ...[
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  if (activeDate.isActive)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: _ActiveFilterPill(
+                        icon: Icons.calendar_today_rounded,
+                        label: activeDate.getLabel(
+                          currentMonth.year,
+                          currentMonth.month,
+                        ),
+                        color: typeColor,
+                        containerColor: containerColor,
+                        onClear: () {
+                          ref.read(dateFilterProvider.notifier).state =
+                              const DateFilter();
+                        },
+                      ),
+                    ),
+                  if (activeCat != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: _ActiveFilterPill(
+                        icon: Icons.label_outline_rounded,
+                        label: activeCat,
+                        color: typeColor,
+                        containerColor: containerColor,
+                        onClear: () {
+                          ref.read(categoryFilterProvider.notifier).state =
+                              null;
+                        },
+                      ),
+                    ),
+                  // Clear All button
+                  GestureDetector(
+                    onTap: () {
+                      ref.read(dateFilterProvider.notifier).state =
+                          const DateFilter();
+                      ref.read(categoryFilterProvider.notifier).state = null;
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      child: Text(
+                        'Hapus Semua',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ActiveFilterPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final Color containerColor;
+  final VoidCallback onClear;
+
+  const _ActiveFilterPill({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.containerColor,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.only(left: 10, top: 4, bottom: 4, right: 6),
+      decoration: BoxDecoration(
+        color: containerColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: color.withValues(alpha: 0.35),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color,
             ),
           ),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 32,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                FilterChipWidget(
-                  label: 'Semua',
-                  isActive: activeCat == null,
-                  onTap: () =>
-                      ref.read(categoryFilterProvider.notifier).state = null,
-                ),
-                ...categories.map((c) => FilterChipWidget(
-                      label: c,
-                      isActive: activeCat == c,
-                      onTap: () =>
-                          ref.read(categoryFilterProvider.notifier).state = c,
-                    )),
-              ],
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onClear,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.all(2),
+              child: Icon(
+                Icons.close_rounded,
+                size: 14,
+                color: color,
+              ),
             ),
           ),
         ],

@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../data/transaction_db.dart';
 import '../data/transaction_model.dart';
 
@@ -24,6 +25,64 @@ final selectedMonthProvider = StateProvider<MonthState>((ref) {
   return MonthState(year: now.year, month: now.month);
 });
 
+// ── Date Filter (All Month, Weekly, or Specific Date) ────────
+enum DateFilterType {
+  allMonth,
+  weekly,
+  specificDate,
+}
+
+class DateFilter {
+  final DateFilterType type;
+  final int? weekIndex; // 1 to 5
+  final DateTime? specificDate;
+
+  const DateFilter({
+    this.type = DateFilterType.allMonth,
+    this.weekIndex,
+    this.specificDate,
+  });
+
+  bool get isActive => type != DateFilterType.allMonth;
+
+  String getLabel(int year, int month) {
+    switch (type) {
+      case DateFilterType.allMonth:
+        return 'Sebulan Penuh';
+      case DateFilterType.weekly:
+        if (weekIndex == null) return 'Mingguan';
+        final lastDay = DateTime(year, month + 1, 0).day;
+        final startDay = (weekIndex! - 1) * 7 + 1;
+        final endDay = (weekIndex! * 7).clamp(1, lastDay);
+        return 'Minggu $weekIndex (Tgl $startDay-$endDay)';
+      case DateFilterType.specificDate:
+        if (specificDate == null) return 'Tanggal';
+        return DateFormat('d MMM yyyy', 'id_ID').format(specificDate!);
+    }
+  }
+
+  bool matches(DateTime date) {
+    switch (type) {
+      case DateFilterType.allMonth:
+        return true;
+      case DateFilterType.weekly:
+        if (weekIndex == null) return true;
+        final day = date.day;
+        final startDay = (weekIndex! - 1) * 7 + 1;
+        final endDay = weekIndex! == 5 ? 31 : weekIndex! * 7;
+        return day >= startDay && day <= endDay;
+      case DateFilterType.specificDate:
+        if (specificDate == null) return true;
+        return date.year == specificDate!.year &&
+            date.month == specificDate!.month &&
+            date.day == specificDate!.day;
+    }
+  }
+}
+
+final dateFilterProvider =
+    StateProvider<DateFilter>((ref) => const DateFilter());
+
 /// Search query provider.
 final searchQueryProvider = StateProvider<String>((ref) => '');
 
@@ -43,6 +102,7 @@ class ExpenseListNotifier extends AsyncNotifier<List<TransactionModel>> {
     final m = ref.watch(selectedMonthProvider);
     final q = ref.watch(searchQueryProvider);
     final cat = ref.watch(categoryFilterProvider);
+    final dateFilter = ref.watch(dateFilterProvider);
 
     List<TransactionModel> list;
     if (q.isNotEmpty) {
@@ -53,6 +113,9 @@ class ExpenseListNotifier extends AsyncNotifier<List<TransactionModel>> {
 
     if (cat != null) {
       list = list.where((t) => t.category == cat).toList();
+    }
+    if (dateFilter.isActive) {
+      list = list.where((t) => dateFilter.matches(t.date)).toList();
     }
     return list;
   }
@@ -76,6 +139,7 @@ class IncomeListNotifier extends AsyncNotifier<List<TransactionModel>> {
     final m = ref.watch(selectedMonthProvider);
     final q = ref.watch(searchQueryProvider);
     final cat = ref.watch(categoryFilterProvider);
+    final dateFilter = ref.watch(dateFilterProvider);
 
     List<TransactionModel> list;
     if (q.isNotEmpty) {
@@ -86,6 +150,9 @@ class IncomeListNotifier extends AsyncNotifier<List<TransactionModel>> {
 
     if (cat != null) {
       list = list.where((t) => t.category == cat).toList();
+    }
+    if (dateFilter.isActive) {
+      list = list.where((t) => dateFilter.matches(t.date)).toList();
     }
     return list;
   }

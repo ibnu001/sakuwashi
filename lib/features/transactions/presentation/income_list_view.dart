@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/theme/app_theme_extension.dart';
-import '../../categories/providers/category_provider.dart';
 import '../data/transaction_db.dart';
 import '../providers/transaction_provider.dart';
 import 'expense_list_view.dart';
@@ -27,10 +26,14 @@ class IncomeListView extends ConsumerWidget {
           // ── Month Switcher ─────────────────────────────
           MonthSwitcher(
             label: monthLabel,
-            onPrev: () =>
-                ref.read(selectedMonthProvider.notifier).state = month.prev(),
-            onNext: () =>
-                ref.read(selectedMonthProvider.notifier).state = month.next(),
+            onPrev: () {
+              ref.read(dateFilterProvider.notifier).state = const DateFilter();
+              ref.read(selectedMonthProvider.notifier).state = month.prev();
+            },
+            onNext: () {
+              ref.read(dateFilterProvider.notifier).state = const DateFilter();
+              ref.read(selectedMonthProvider.notifier).state = month.next();
+            },
           ),
           // ── Total Card ─────────────────────────────────
           listAsync.when(
@@ -47,15 +50,7 @@ class IncomeListView extends ConsumerWidget {
             error: (e, st) => const SizedBox(height: 72),
           ),
           // ── Search / Filter ────────────────────────────
-          ref
-              .watch(incomeCategoriesProvider)
-              .when(
-                data: (cats) => SearchFilterBar(
-                  categories: cats.map((c) => c.name).toList(),
-                ),
-                loading: () => const SizedBox(height: 72),
-                error: (e, st) => const SizedBox(height: 72),
-              ),
+          const SearchFilterBar(type: 'income'),
           // ── List ───────────────────────────────────────
           Expanded(
             child: listAsync.when(
