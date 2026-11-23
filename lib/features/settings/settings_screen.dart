@@ -83,69 +83,69 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 20),
 
-          // ── Google Drive ───────────────────────────────
-          const _SectionHeader(title: 'Google Drive'),
-          if (settingsState.googleEmail != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                'Akun: ${settingsState.googleEmail}',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          if (settingsState.lastBackupTime != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                'Backup terakhir: ${settingsState.lastBackupTime}',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          _buildSettingsTile(
-            context: context,
-            icon: Icons.cloud_upload_outlined,
-            title: 'Backup ke Google Drive',
-            subtitle: 'Upload data ke folder Sakuwashi_Backup',
-            trailing: settingsState.isBackingUp
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : null,
-            onTap: settingsState.isBackingUp
-                ? null
-                : () => _backupToDrive(context, ref),
-          ),
-          _buildSettingsTile(
-            context: context,
-            icon: Icons.cloud_download_outlined,
-            title: 'Pulihkan dari Google Drive',
-            subtitle: 'Pilih backup untuk dipulihkan',
-            trailing: settingsState.isRestoring
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : null,
-            onTap: settingsState.isRestoring
-                ? null
-                : () => _restoreFromDrive(context, ref),
-          ),
-          if (settingsState.googleEmail != null)
-            _buildSettingsTile(
-              context: context,
-              icon: Icons.logout_outlined,
-              title: 'Logout Google',
-              subtitle: 'Putuskan koneksi akun Google',
-              onTap: () => _logoutGoogle(context, ref),
-            ),
-          const SizedBox(height: 40),
+          // ── Google Drive Hide ──────────────────────────
+          // const _SectionHeader(title: 'Google Drive'),
+          // if (settingsState.googleEmail != null)
+          //   Padding(
+          //     padding: const EdgeInsets.only(bottom: 8),
+          //     child: Text(
+          //       'Akun: ${settingsState.googleEmail}',
+          //       style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          //         color: Theme.of(context).colorScheme.onSurfaceVariant,
+          //       ),
+          //     ),
+          //   ),
+          // if (settingsState.lastBackupTime != null)
+          //   Padding(
+          //     padding: const EdgeInsets.only(bottom: 8),
+          //     child: Text(
+          //       'Backup terakhir: ${settingsState.lastBackupTime}',
+          //       style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          //         color: Theme.of(context).colorScheme.onSurfaceVariant,
+          //       ),
+          //     ),
+          //   ),
+          // _buildSettingsTile(
+          //   context: context,
+          //   icon: Icons.cloud_upload_outlined,
+          //   title: 'Backup ke Google Drive',
+          //   subtitle: 'Upload data ke folder Sakuwashi_Backup',
+          //   trailing: settingsState.isBackingUp
+          //       ? const SizedBox(
+          //           width: 20,
+          //           height: 20,
+          //           child: CircularProgressIndicator(strokeWidth: 2),
+          //         )
+          //       : null,
+          //   onTap: settingsState.isBackingUp
+          //       ? null
+          //       : () => _backupToDrive(context, ref),
+          // ),
+          // _buildSettingsTile(
+          //   context: context,
+          //   icon: Icons.cloud_download_outlined,
+          //   title: 'Pulihkan dari Google Drive',
+          //   subtitle: 'Pilih backup untuk dipulihkan',
+          //   trailing: settingsState.isRestoring
+          //       ? const SizedBox(
+          //           width: 20,
+          //           height: 20,
+          //           child: CircularProgressIndicator(strokeWidth: 2),
+          //         )
+          //       : null,
+          //   onTap: settingsState.isRestoring
+          //       ? null
+          //       : () => _restoreFromDrive(context, ref),
+          // ),
+          // if (settingsState.googleEmail != null)
+          //   _buildSettingsTile(
+          //     context: context,
+          //     icon: Icons.logout_outlined,
+          //     title: 'Logout Google',
+          //     subtitle: 'Putuskan koneksi akun Google',
+          //     onTap: () => _logoutGoogle(context, ref),
+          //   ),
+          // const SizedBox(height: 40),
         ],
       ),
     );

@@ -104,12 +104,17 @@ class CsvService {
   static Future<void> shareCSV() async {
     final csv = await generateCSVString();
     final dir = await getTemporaryDirectory();
-    final timestamp = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
-    final file = File('${dir.path}/sakuwashi_$timestamp.csv');
+
+    final now = DateTime.now();
+    final fileTimestamp = DateFormat('yyyyMMdd_HHmm').format(now);
+    final readableDate = DateFormat('dd-MMM-yyyy_HH-mm').format(now);
+
+    final file = File('${dir.path}/sakuwashi_$fileTimestamp.csv');
     await file.writeAsString(csv);
+
     await Share.shareXFiles([
-      XFile(file.path),
-    ], subject: 'Sakuwashi - Data Transaksi');
+      XFile(file.path, mimeType: 'text/csv'),
+    ], subject: 'sakuwashi_transaksi_$readableDate.csv');
   }
 
   /// Import transactions from a CSV string into SQLite.
