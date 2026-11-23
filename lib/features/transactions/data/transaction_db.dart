@@ -63,7 +63,6 @@ class TransactionDb {
       ('Tagihan', 'receipt_long', 2),
       ('Belanja', 'shopping_bag', 3),
       ('Hiburan', 'movie', 4),
-      ('Kesehatan', 'local_hospital', 5),
       ('Lainnya', 'more_horiz', 9999),
     ];
     for (final (name, iconKey, sortOrder) in expenseDefaults) {

@@ -25,10 +25,9 @@ class SettingsScreen extends ConsumerWidget {
         children: [
           Text(
             'Pengaturan',
-            style: Theme.of(context)
-                .textTheme
-                .headlineSmall
-                ?.copyWith(fontWeight: FontWeight.w700),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 20),
 
@@ -92,8 +91,8 @@ class SettingsScreen extends ConsumerWidget {
               child: Text(
                 'Akun: ${settingsState.googleEmail}',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           if (settingsState.lastBackupTime != null)
@@ -102,8 +101,8 @@ class SettingsScreen extends ConsumerWidget {
               child: Text(
                 'Backup terakhir: ${settingsState.lastBackupTime}',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           _buildSettingsTile(
@@ -183,19 +182,16 @@ class SettingsScreen extends ConsumerWidget {
                 children: [
                   Text(
                     title,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w600),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   if (subtitle != null)
                     Text(
                       subtitle,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant,
-                          ),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                 ],
               ),
@@ -207,23 +203,31 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _exportCSV(BuildContext context, WidgetRef ref,
-      {required bool download}) async {
+  Future<void> _exportCSV(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool download,
+  }) async {
     try {
       if (download) {
-        final path = await CsvService.exportToFile();
+        final path = await CsvService.exportWithSystemFilePicker();
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('CSV disimpan: $path')),
-        );
+        if (path != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('File CSV berhasil disimpan ke:\n$path'),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
       } else {
         await CsvService.shareCSV();
       }
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal: $e')));
     }
   }
 
@@ -244,17 +248,18 @@ class SettingsScreen extends ConsumerWidget {
 
       final now = DateTime.now();
       await ctrl.setLastBackupTime(
-          '${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute.toString().padLeft(2, '0')}');
+        '${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
+      );
 
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Backup berhasil!')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Backup berhasil!')));
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Backup gagal: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Backup gagal: $e')));
     } finally {
       ctrl.setBackingUp(false);
     }
@@ -314,14 +319,14 @@ class SettingsScreen extends ConsumerWidget {
       await refreshAllTransactions(ref);
 
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$count transaksi dipulihkan!')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$count transaksi dipulihkan!')));
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Pulihkan gagal: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Pulihkan gagal: $e')));
     } finally {
       ctrl.setRestoring(false);
     }
@@ -346,9 +351,9 @@ class _SectionHeader extends StatelessWidget {
       child: Text(
         title,
         style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.w700,
-            ),
+          color: Theme.of(context).colorScheme.primary,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -469,8 +474,7 @@ class _ThemeModeSelector extends ConsumerWidget {
                     opt.$2,
                     style: TextStyle(
                       fontSize: 11,
-                      fontWeight:
-                          isActive ? FontWeight.w600 : FontWeight.w400,
+                      fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
                       color: isActive
                           ? Theme.of(context).colorScheme.primary
                           : Theme.of(context).colorScheme.onSurfaceVariant,
@@ -576,16 +580,20 @@ class _ColorRow extends StatelessWidget {
             child: ListView(
               scrollDirection: Axis.horizontal,
               children: [
-                ..._swatches.map((c) => _SwatchCircle(
-                      color: c,
-                      isActive: _colorsMatch(c, currentColor),
-                      onTap: () => onColorChanged(c),
-                    )),
+                ..._swatches.map(
+                  (c) => _SwatchCircle(
+                    color: c,
+                    isActive: _colorsMatch(c, currentColor),
+                    onTap: () => onColorChanged(c),
+                  ),
+                ),
                 // Custom hex picker
                 _SwatchCircle(
                   color: currentColor,
                   isCustom: true,
-                  isActive: !_swatches.any((s) => _colorsMatch(s, currentColor)),
+                  isActive: !_swatches.any(
+                    (s) => _colorsMatch(s, currentColor),
+                  ),
                   onTap: () => _showHexPicker(context),
                 ),
               ],
@@ -603,21 +611,21 @@ class _ColorRow extends StatelessWidget {
 
   void _showHexPicker(BuildContext context) {
     final ctrl = TextEditingController(
-        text: AppColorDefaults.hexFromColor(currentColor));
+      text: AppColorDefaults.hexFromColor(currentColor),
+    );
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Masukkan Kode Warna'),
         content: TextField(
           controller: ctrl,
-          decoration: const InputDecoration(
-            hintText: '#E11D48',
-          ),
+          decoration: const InputDecoration(hintText: '#E11D48'),
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Batal')),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal'),
+          ),
           TextButton(
             onPressed: () {
               try {
@@ -673,8 +681,8 @@ class _SwatchCircle extends StatelessWidget {
           child: isCustom
               ? const Icon(Icons.colorize, size: 16, color: Colors.white)
               : (isActive
-                  ? const Icon(Icons.check, size: 16, color: Colors.white)
-                  : null),
+                    ? const Icon(Icons.check, size: 16, color: Colors.white)
+                    : null),
         ),
       ),
     );

@@ -64,7 +64,6 @@ class TransactionModel {
     'Tagihan',
     'Belanja',
     'Hiburan',
-    'Kesehatan',
     'Lainnya',
   ];
 
@@ -87,7 +86,6 @@ const Map<String, IconData> _categoryIcons = {
   'Tagihan': Icons.receipt_long,
   'Belanja': Icons.shopping_bag,
   'Hiburan': Icons.movie,
-  'Kesehatan': Icons.local_hospital,
   'Gaji': Icons.account_balance_wallet,
   'Freelance': Icons.work,
   'Bonus': Icons.card_giftcard,
