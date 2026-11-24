@@ -4,10 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/app_color_defaults.dart';
 import '../../core/theme/app_theme_extension.dart';
 import '../../core/theme/theme_controller.dart';
+import '../../core/utils/currency_formatter.dart';
 import '../backup/backup_provider.dart';
 import '../backup/csv_service.dart';
 import '../backup/google_drive_service.dart';
 import '../categories/presentation/manage_categories_sheet.dart';
+import '../categories/providers/category_provider.dart';
 import '../transactions/providers/transaction_provider.dart';
 import 'settings_controller.dart';
 
@@ -17,6 +19,7 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeState = ref.watch(themeControllerProvider);
+    // ignore: unused_local_variable
     final settingsState = ref.watch(settingsControllerProvider);
 
     return SafeArea(
@@ -65,8 +68,15 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 20),
 
-          // ── CSV Export ─────────────────────────────────
-          const _SectionHeader(title: 'Ekspor Data'),
+          // ── Kelola Data (CSV) ──────────────────────────
+          const _SectionHeader(title: 'Kelola Data (CSV)'),
+          _buildSettingsTile(
+            context: context,
+            icon: Icons.file_upload_outlined,
+            title: 'Impor CSV',
+            subtitle: 'Masukkan transaksi dari file CSV (Gabung / Timpa)',
+            onTap: () => _importCSV(context, ref),
+          ),
           _buildSettingsTile(
             context: context,
             icon: Icons.download_outlined,
@@ -203,6 +213,73 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _importCSV(BuildContext context, WidgetRef ref) async {
+    try {
+      final csvString = await CsvService.pickCSVFile();
+      if (!context.mounted || csvString == null) return;
+
+      final result = CsvService.parseCSV(csvString);
+
+      if (result.transactions.isEmpty) {
+        if (!context.mounted) return;
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Text('Format Tidak Sesuai'),
+            content: const Text(
+              'Tidak ditemukan data transaksi yang valid dalam file CSV tersebut.\n\n'
+              'Pastikan file CSV memiliki kolom tanggal, tipe (pengeluaran/pemasukan), '
+              'kategori, dan nominal.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Tutup'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
+      final shouldReplace = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => _CsvImportConfirmSheet(result: result),
+      );
+
+      if (shouldReplace == null || !context.mounted) return;
+
+      final count = await CsvService.executeImport(
+        transactions: result.transactions,
+        replace: shouldReplace,
+      );
+
+      await refreshAllTransactions(ref);
+      ref.invalidate(expenseCategoriesProvider);
+      ref.invalidate(incomeCategoriesProvider);
+      ref.read(backupRefreshProvider.notifier).state++;
+
+      if (!context.mounted) return;
+      final modeStr = shouldReplace ? 'ditimpa' : 'ditambahkan';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Berhasil mengimpor $count transaksi ($modeStr)!'),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal mengimpor: $e')));
+    }
+  }
+
   Future<void> _exportCSV(
     BuildContext context,
     WidgetRef ref, {
@@ -231,6 +308,7 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
+  // ignore: unused_element
   Future<void> _backupToDrive(BuildContext context, WidgetRef ref) async {
     final ctrl = ref.read(settingsControllerProvider.notifier);
     ctrl.setBackingUp(true);
@@ -265,6 +343,7 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
+  // ignore: unused_element
   Future<void> _restoreFromDrive(BuildContext context, WidgetRef ref) async {
     final ctrl = ref.read(settingsControllerProvider.notifier);
     ctrl.setRestoring(true);
@@ -332,6 +411,7 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
+  // ignore: unused_element
   Future<void> _logoutGoogle(BuildContext context, WidgetRef ref) async {
     final service = GoogleDriveService();
     await service.signOut();
@@ -683,6 +763,306 @@ class _SwatchCircle extends StatelessWidget {
               : (isActive
                     ? const Icon(Icons.check, size: 16, color: Colors.white)
                     : null),
+        ),
+      ),
+    );
+  }
+}
+
+class _CsvImportConfirmSheet extends StatefulWidget {
+  final CsvImportResult result;
+
+  const _CsvImportConfirmSheet({required this.result});
+
+  @override
+  State<_CsvImportConfirmSheet> createState() => _CsvImportConfirmSheetState();
+}
+
+class _CsvImportConfirmSheetState extends State<_CsvImportConfirmSheet> {
+  bool _replace = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final appColors = Theme.of(context).extension<AppColorsExtension>()!;
+    final theme = Theme.of(context);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        12,
+        20,
+        MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Drag handle
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.outlineVariant,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Header
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.file_upload_outlined,
+                  color: theme.colorScheme.primary,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Impor Transaksi CSV',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      'Ditemukan ${widget.result.transactions.length} transaksi dalam file',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+
+          // Summary Card
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.4,
+              ),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: theme.colorScheme.outlineVariant,
+                width: 1,
+              ),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: appColors.expenseColor,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Pengeluaran (${widget.result.expenseCount})',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                    Text(
+                      CurrencyFormatter.format(
+                        widget.result.totalExpenseAmount,
+                      ),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: appColors.expenseColor,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: appColors.incomeColor,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Pemasukan (${widget.result.incomeCount})',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                    Text(
+                      CurrencyFormatter.format(widget.result.totalIncomeAmount),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: appColors.incomeColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+
+          // Import Mode Selector
+          Text(
+            'Metode Impor',
+            style: theme.textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          _buildModeOption(
+            theme: theme,
+            title: 'Gabungkan Data',
+            description:
+                'Menambahkan transaksi ke data yang sudah ada tanpa menghapus.',
+            selected: !_replace,
+            onTap: () => setState(() => _replace = false),
+          ),
+          const SizedBox(height: 8),
+          _buildModeOption(
+            theme: theme,
+            title: 'Timpa Semua Data',
+            description:
+                'Hapus semua transaksi saat ini dan ganti dengan data CSV ini.',
+            selected: _replace,
+            isDestructive: true,
+            onTap: () => setState(() => _replace = true),
+          ),
+          const SizedBox(height: 22),
+
+          // Action Buttons
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context, null),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text('Batal'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(context, _replace),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _replace
+                        ? appColors.expenseColor
+                        : theme.colorScheme.primary,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(_replace ? 'Timpa & Impor' : 'Impor Sekarang'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModeOption({
+    required ThemeData theme,
+    required String title,
+    required String description,
+    required bool selected,
+    required VoidCallback onTap,
+    bool isDestructive = false,
+  }) {
+    final borderColor = selected
+        ? (isDestructive ? theme.colorScheme.error : theme.colorScheme.primary)
+        : theme.colorScheme.outlineVariant;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: selected
+              ? (isDestructive
+                    ? theme.colorScheme.errorContainer.withValues(alpha: 0.2)
+                    : theme.colorScheme.primaryContainer.withValues(alpha: 0.3))
+              : theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: borderColor, width: selected ? 1.5 : 1),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              selected ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: selected
+                  ? (isDestructive
+                        ? theme.colorScheme.error
+                        : theme.colorScheme.primary)
+                  : theme.colorScheme.onSurfaceVariant,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: isDestructive && selected
+                          ? theme.colorScheme.error
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    description,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

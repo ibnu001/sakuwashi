@@ -191,6 +191,29 @@ class TransactionDb {
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
+  /// Ensure a category with [name] and [type] exists in the categories table.
+  /// If it does not exist, insert it as a new custom category with fallback icon.
+  static Future<void> ensureCategoryExists(String name, String type) async {
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty) return;
+    final db = await database;
+    final existing = await db.query(
+      'categories',
+      where: 'LOWER(name) = ? AND type = ?',
+      whereArgs: [trimmedName.toLowerCase(), type],
+      limit: 1,
+    );
+    if (existing.isEmpty) {
+      await db.insert('categories', {
+        'name': trimmedName,
+        'type': type,
+        'icon_key': 'more_horiz',
+        'is_default': 0,
+        'sort_order': 50,
+      });
+    }
+  }
+
   // ── TRANSACTIONS CRUD ────────────────────────────────────
   static Future<int> insert(TransactionModel txn) async {
     final db = await database;
