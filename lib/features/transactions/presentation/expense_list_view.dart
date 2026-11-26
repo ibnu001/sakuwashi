@@ -8,6 +8,7 @@ import '../../categories/providers/category_provider.dart';
 import '../data/transaction_db.dart';
 import '../data/transaction_model.dart';
 import '../providers/transaction_provider.dart';
+import 'period_switcher.dart';
 import 'transaction_filter_sheet.dart';
 import 'transaction_form_sheet.dart';
 
@@ -16,33 +17,24 @@ class ExpenseListView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final month = ref.watch(selectedMonthProvider);
     final listAsync = ref.watch(expenseListProvider);
     final appColors = Theme.of(context).extension<AppColorsExtension>()!;
-    final monthLabel = DateFormat('MMMM yyyy', 'id_ID')
-        .format(DateTime(month.year, month.month));
+    final dateFilter = ref.watch(dateFilterProvider);
 
     return SafeArea(
       child: Column(
         children: [
-          // ── Month Switcher ─────────────────────────────
-          MonthSwitcher(
-            label: monthLabel,
-            onPrev: () {
-              ref.read(dateFilterProvider.notifier).state = const DateFilter();
-              ref.read(selectedMonthProvider.notifier).state = month.prev();
-            },
-            onNext: () {
-              ref.read(dateFilterProvider.notifier).state = const DateFilter();
-              ref.read(selectedMonthProvider.notifier).state = month.next();
-            },
+          // ── Period Switcher ─────────────────────────────
+          PeriodSwitcher(
+            filteredLabel:
+                dateFilter.isIndependentRange ? dateFilter.getLabel() : null,
           ),
           // ── Total Card ─────────────────────────────────
           listAsync.when(
             data: (list) {
               final total = list.fold<int>(0, (s, t) => s + t.amount);
               return TotalCard(
-                label: 'Total Pengeluaran bulan ini',
+                label: 'Total Pengeluaran',
                 amount: total,
                 color: appColors.expenseColor,
                 containerColor: appColors.expenseContainer,
@@ -59,7 +51,7 @@ class ExpenseListView extends ConsumerWidget {
               data: (list) {
                 if (list.isEmpty) {
                   return const Center(
-                    child: Text('Belum ada pengeluaran bulan ini',
+                    child: Text('Belum ada pengeluaran',
                         style: TextStyle(color: Colors.grey)),
                   );
                 }
@@ -105,48 +97,6 @@ class ExpenseListView extends ConsumerWidget {
 }
 
 // ── Shared widgets for both list views ──────────────────────
-
-class MonthSwitcher extends StatelessWidget {
-  final String label;
-  final VoidCallback onPrev;
-  final VoidCallback onNext;
-
-  const MonthSwitcher({
-    super.key,
-    required this.label,
-    required this.onPrev,
-    required this.onNext,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.chevron_left, size: 22),
-            onPressed: onPrev,
-            visualDensity: VisualDensity.compact,
-          ),
-          Text(
-            label,
-            style: Theme.of(context)
-                .textTheme
-                .titleMedium
-                ?.copyWith(fontWeight: FontWeight.w600),
-          ),
-          IconButton(
-            icon: const Icon(Icons.chevron_right, size: 22),
-            onPressed: onNext,
-            visualDensity: VisualDensity.compact,
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class TotalCard extends StatelessWidget {
   final String label;
@@ -230,7 +180,6 @@ class _SearchFilterBarState extends ConsumerState<SearchFilterBar> {
   Widget build(BuildContext context) {
     final activeCat = ref.watch(categoryFilterProvider);
     final activeDate = ref.watch(dateFilterProvider);
-    final currentMonth = ref.watch(selectedMonthProvider);
     final appColors = Theme.of(context).extension<AppColorsExtension>()!;
     final typeColor = widget.type == 'expense'
         ? appColors.expenseColor
@@ -371,10 +320,7 @@ class _SearchFilterBarState extends ConsumerState<SearchFilterBar> {
                       padding: const EdgeInsets.only(right: 6),
                       child: _ActiveFilterPill(
                         icon: Icons.calendar_today_rounded,
-                        label: activeDate.getLabel(
-                          currentMonth.year,
-                          currentMonth.month,
-                        ),
+                        label: 'Filter: ${activeDate.getLabel()}',
                         color: typeColor,
                         containerColor: containerColor,
                         onClear: () {
@@ -397,30 +343,30 @@ class _SearchFilterBarState extends ConsumerState<SearchFilterBar> {
                         },
                       ),
                     ),
-                  // Clear All button
-                  GestureDetector(
-                    onTap: () {
-                      ref.read(dateFilterProvider.notifier).state =
-                          const DateFilter();
-                      ref.read(categoryFilterProvider.notifier).state = null;
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      child: Text(
-                        'Hapus Semua',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant,
+                  if (activeFilterCount > 1)
+                    GestureDetector(
+                      onTap: () {
+                        ref.read(dateFilterProvider.notifier).state =
+                            const DateFilter();
+                        ref.read(categoryFilterProvider.notifier).state = null;
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        child: Text(
+                          'Hapus Semua',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
+                          ),
                         ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),

@@ -1,22 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../../core/theme/app_theme_extension.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../providers/transaction_provider.dart';
+import 'period_switcher.dart';
 
-/// Monthly financial overview: income vs. expense balance card and category breakdown bars.
+/// Monthly/cycle financial overview: income vs. expense balance card and category breakdown bars.
 class SummaryView extends ConsumerWidget {
   const SummaryView({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final month = ref.watch(selectedMonthProvider);
     final summaryAsync = ref.watch(monthlySummaryProvider);
     final appColors = Theme.of(context).extension<AppColorsExtension>()!;
-    final monthLabel = DateFormat('MMMM yyyy', 'id_ID')
-        .format(DateTime(month.year, month.month));
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -24,35 +21,9 @@ class SummaryView extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Month Switcher ──────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(0, 12, 0, 4),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.chevron_left, size: 22),
-                    onPressed: () => ref
-                        .read(selectedMonthProvider.notifier)
-                        .state = month.prev(),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  Text(
-                    monthLabel,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right, size: 22),
-                    onPressed: () => ref
-                        .read(selectedMonthProvider.notifier)
-                        .state = month.next(),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ],
-              ),
+            // ── Period Switcher ──────────────────────────
+            const PeriodSwitcher(
+              padding: EdgeInsets.fromLTRB(0, 12, 0, 4),
             ),
             const SizedBox(height: 8),
 
@@ -124,7 +95,7 @@ class SummaryView extends ConsumerWidget {
                       const Center(
                         child: Padding(
                           padding: EdgeInsets.only(top: 60),
-                          child: Text('Belum ada data bulan ini',
+                          child: Text('Belum ada data periode ini',
                               style: TextStyle(color: Colors.grey)),
                         ),
                       ),

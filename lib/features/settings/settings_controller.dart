@@ -7,12 +7,14 @@ class SettingsState {
   final String? lastBackupTime;
   final bool isBackingUp;
   final bool isRestoring;
+  final bool useDynamicPaydayCycle;
 
   const SettingsState({
     this.googleEmail,
     this.lastBackupTime,
     this.isBackingUp = false,
     this.isRestoring = false,
+    this.useDynamicPaydayCycle = false,
   });
 
   SettingsState copyWith({
@@ -20,6 +22,7 @@ class SettingsState {
     String? lastBackupTime,
     bool? isBackingUp,
     bool? isRestoring,
+    bool? useDynamicPaydayCycle,
     bool clearEmail = false,
   }) {
     return SettingsState(
@@ -27,6 +30,8 @@ class SettingsState {
       lastBackupTime: lastBackupTime ?? this.lastBackupTime,
       isBackingUp: isBackingUp ?? this.isBackingUp,
       isRestoring: isRestoring ?? this.isRestoring,
+      useDynamicPaydayCycle:
+          useDynamicPaydayCycle ?? this.useDynamicPaydayCycle,
     );
   }
 }
@@ -40,6 +45,8 @@ class SettingsController extends Notifier<SettingsState> {
     state = SettingsState(
       googleEmail: prefs.getString('google_email'),
       lastBackupTime: prefs.getString('last_backup_time'),
+      useDynamicPaydayCycle:
+          prefs.getBool('use_dynamic_payday_cycle') ?? false,
     );
   }
 
@@ -61,6 +68,12 @@ class SettingsController extends Notifier<SettingsState> {
 
   void setBackingUp(bool v) => state = state.copyWith(isBackingUp: v);
   void setRestoring(bool v) => state = state.copyWith(isRestoring: v);
+
+  Future<void> setUseDynamicPaydayCycle(bool v) async {
+    state = state.copyWith(useDynamicPaydayCycle: v);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('use_dynamic_payday_cycle', v);
+  }
 }
 
 final settingsControllerProvider =

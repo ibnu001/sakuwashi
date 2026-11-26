@@ -10,6 +10,13 @@ import 'package:share_plus/share_plus.dart';
 import '../transactions/data/transaction_db.dart';
 import '../transactions/data/transaction_model.dart';
 
+/// Scope for CSV export.
+enum CsvExportScope {
+  monthly,
+  yearly,
+  all,
+}
+
 /// Result summary of parsing a CSV file before importing.
 class CsvImportResult {
   final int totalRows;
@@ -45,7 +52,7 @@ class CsvService {
     'catatan',
   ];
 
-  /// Generate CSV string from all transactions.
+  /// Generate CSV string from transactions (optionally scoped).
   static Future<String> generateCSVString({
     List<TransactionModel>? transactions,
   }) async {
@@ -64,13 +71,81 @@ class CsvService {
     return const ListToCsvConverter().convert(rows);
   }
 
-  /// Prompts the user to pick a folder/destination via the device's native
-  /// file explorer (Storage Access Framework), writes the CSV file, and returns
-  /// the saved path. Returns null if the user cancelled the picker.
-  static Future<String?> exportWithSystemFilePicker() async {
-    final csv = await generateCSVString();
-    final timestamp = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
-    final fileName = 'sakuwashi_transaksi_$timestamp.csv';
+  /// Fetch transactions for a given export scope.
+  static Future<List<TransactionModel>> fetchForScope({
+    required CsvExportScope scope,
+    int? year,
+    int? month,
+  }) async {
+    switch (scope) {
+      case CsvExportScope.monthly:
+        if (year == null || month == null) return [];
+        return TransactionDb.getByDateRange(
+          DateTime(year, month, 1),
+          DateTime(year, month + 1, 1),
+        );
+      case CsvExportScope.yearly:
+        if (year == null) return [];
+        return TransactionDb.getByYear(year);
+      case CsvExportScope.all:
+        return TransactionDb.getAll();
+    }
+  }
+
+  /// Generate the filename for a given scope.
+  static String generateFileName({
+    required CsvExportScope scope,
+    int? year,
+    int? month,
+  }) {
+    final now = DateTime.now();
+    final timestamp = DateFormat('dd-MMM-yyyy_HH-mm').format(now);
+    switch (scope) {
+      case CsvExportScope.monthly:
+        final monthStr = month != null
+            ? DateFormat('MMM-yyyy').format(DateTime(year ?? now.year, month))
+            : 'Unknown';
+        return 'SakuWashi_${monthStr}_$timestamp.csv';
+      case CsvExportScope.yearly:
+        return 'SakuWashi_${year ?? now.year}_$timestamp.csv';
+      case CsvExportScope.all:
+        return 'SakuWashi_All_$timestamp.csv';
+    }
+  }
+
+  /// Count transactions for a given scope.
+  static Future<int> countForScope({
+    required CsvExportScope scope,
+    int? year,
+    int? month,
+  }) async {
+    switch (scope) {
+      case CsvExportScope.monthly:
+        if (year == null || month == null) return 0;
+        return TransactionDb.countByDateRange(
+          DateTime(year, month, 1),
+          DateTime(year, month + 1, 1),
+        );
+      case CsvExportScope.yearly:
+        if (year == null) return 0;
+        return TransactionDb.countByDateRange(
+          DateTime(year, 1, 1),
+          DateTime(year + 1, 1, 1),
+        );
+      case CsvExportScope.all:
+        return TransactionDb.countAll();
+    }
+  }
+
+  /// Export with system file picker, scoped.
+  static Future<String?> exportWithSystemFilePicker({
+    CsvExportScope scope = CsvExportScope.all,
+    int? year,
+    int? month,
+  }) async {
+    final txns = await fetchForScope(scope: scope, year: year, month: month);
+    final csv = await generateCSVString(transactions: txns);
+    final fileName = generateFileName(scope: scope, year: year, month: month);
     final bytes = Uint8List.fromList(utf8.encode(csv));
 
     // 1. Primary approach: Native system "Save As" document picker
@@ -122,21 +197,23 @@ class CsvService {
     return file.path;
   }
 
-  /// Share CSV via system share dialog.
-  static Future<void> shareCSV() async {
-    final csv = await generateCSVString();
+  /// Share CSV via system share dialog, scoped.
+  static Future<void> shareCSV({
+    CsvExportScope scope = CsvExportScope.all,
+    int? year,
+    int? month,
+  }) async {
+    final txns = await fetchForScope(scope: scope, year: year, month: month);
+    final csv = await generateCSVString(transactions: txns);
     final dir = await getTemporaryDirectory();
 
-    final now = DateTime.now();
-    final fileTimestamp = DateFormat('yyyyMMdd_HHmm').format(now);
-    final readableDate = DateFormat('dd-MMM-yyyy_HH-mm').format(now);
-
-    final file = File('${dir.path}/sakuwashi_$fileTimestamp.csv');
+    final fileName = generateFileName(scope: scope, year: year, month: month);
+    final file = File('${dir.path}/$fileName');
     await file.writeAsString(csv);
 
     await Share.shareXFiles([
       XFile(file.path, mimeType: 'text/csv'),
-    ], subject: 'sakuwashi_transaksi_$readableDate.csv');
+    ], subject: fileName);
   }
 
   /// Prompts the user to pick a CSV file from device storage.

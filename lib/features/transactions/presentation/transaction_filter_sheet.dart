@@ -7,7 +7,11 @@ import '../../categories/providers/category_provider.dart';
 import '../providers/transaction_provider.dart';
 
 /// Modal bottom sheet popup for filtering transactions by date period
-/// (full month, weekly, or specific date) and by category.
+/// and by category. Supports 4 filter modes:
+/// 1. Periode Aktif (follows top period navigator)
+/// 2. Bulan & Tahun (specific month + year)
+/// 3. Tahun Penuh (entire year)
+/// 4. Rentang Tanggal Kustom (arbitrary date range)
 class TransactionFilterSheet extends ConsumerStatefulWidget {
   final String type; // 'expense' | 'income'
 
@@ -26,17 +30,28 @@ class _TransactionFilterSheetState
   late DateFilter _dateFilter;
   late String? _selectedCategory;
 
+  // For month/year picker
+  late int _pickerYear;
+  late int _pickerMonth;
+
   @override
   void initState() {
     super.initState();
     _dateFilter = ref.read(dateFilterProvider);
     _selectedCategory = ref.read(categoryFilterProvider);
+
+    final now = DateTime.now();
+    _pickerYear = _dateFilter.filterYear ?? now.year;
+    _pickerMonth = _dateFilter.filterMonth ?? now.month;
   }
 
   void _resetFilter() {
     setState(() {
       _dateFilter = const DateFilter();
       _selectedCategory = null;
+      final now = DateTime.now();
+      _pickerYear = now.year;
+      _pickerMonth = now.month;
     });
   }
 
@@ -46,28 +61,22 @@ class _TransactionFilterSheetState
     Navigator.pop(context);
   }
 
-  Future<void> _pickSpecificDate(
-      int year, int month, Color typeColor) async {
-    final lastDay = DateTime(year, month + 1, 0).day;
-    final initial = _dateFilter.specificDate ??
-        DateTime(year, month, DateTime.now().day.clamp(1, lastDay));
-
-    final picked = await showDatePicker(
+  Future<void> _pickCustomDateRange(Color typeColor) async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
       context: context,
-      initialDate: initial,
-      firstDate: DateTime(year, month, 1),
-      lastDate: DateTime(year, month, lastDay),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      initialDateRange: _dateFilter.rangeStart != null &&
+              _dateFilter.rangeEnd != null
+          ? DateTimeRange(
+              start: _dateFilter.rangeStart!, end: _dateFilter.rangeEnd!)
+          : DateTimeRange(
+              start: DateTime(now.year, now.month, 1), end: now),
       locale: const Locale('id', 'ID'),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            datePickerTheme: DatePickerThemeData(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
-              ),
-              headerBackgroundColor: typeColor,
-              headerForegroundColor: Colors.white,
-            ),
             colorScheme: Theme.of(context).colorScheme.copyWith(
                   primary: typeColor,
                   onPrimary: Colors.white,
@@ -81,8 +90,9 @@ class _TransactionFilterSheetState
     if (picked != null) {
       setState(() {
         _dateFilter = DateFilter(
-          type: DateFilterType.specificDate,
-          specificDate: picked,
+          type: DateFilterType.customRange,
+          rangeStart: picked.start,
+          rangeEnd: picked.end,
         );
       });
     }
@@ -97,9 +107,6 @@ class _TransactionFilterSheetState
     final containerColor = widget.type == 'expense'
         ? appColors.expenseContainer
         : appColors.incomeContainer;
-
-    final month = ref.watch(selectedMonthProvider);
-    final lastDayOfMonth = DateTime(month.year, month.month + 1, 0).day;
 
     final categoriesAsync = widget.type == 'expense'
         ? ref.watch(expenseCategoriesProvider)
@@ -182,125 +189,102 @@ class _TransactionFilterSheetState
               ),
               const SizedBox(height: 10),
 
-              // Date Mode Tabs
+              // Date Mode Tabs - Row 1
               Row(
                 children: [
                   _PeriodModeTab(
-                    label: 'Sebulan Penuh',
+                    label: 'Periode Aktif',
                     isActive: _dateFilter.type == DateFilterType.allMonth,
                     color: typeColor,
                     onTap: () {
                       setState(() {
-                        _dateFilter = const DateFilter(
-                            type: DateFilterType.allMonth);
+                        _dateFilter =
+                            const DateFilter(type: DateFilterType.allMonth);
                       });
                     },
                   ),
                   const SizedBox(width: 8),
                   _PeriodModeTab(
-                    label: 'Mingguan',
-                    isActive: _dateFilter.type == DateFilterType.weekly,
+                    label: 'Bulan & Tahun',
+                    isActive: _dateFilter.type == DateFilterType.monthYear,
                     color: typeColor,
                     onTap: () {
                       setState(() {
                         _dateFilter = DateFilter(
-                          type: DateFilterType.weekly,
-                          weekIndex: _dateFilter.weekIndex ?? 1,
+                          type: DateFilterType.monthYear,
+                          filterYear: _pickerYear,
+                          filterMonth: _pickerMonth,
+                        );
+                      });
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // Date Mode Tabs - Row 2
+              Row(
+                children: [
+                  _PeriodModeTab(
+                    label: 'Tahun Penuh',
+                    isActive: _dateFilter.type == DateFilterType.fullYear,
+                    color: typeColor,
+                    onTap: () {
+                      setState(() {
+                        _dateFilter = DateFilter(
+                          type: DateFilterType.fullYear,
+                          filterYear: _pickerYear,
                         );
                       });
                     },
                   ),
                   const SizedBox(width: 8),
                   _PeriodModeTab(
-                    label: 'Spesifik',
-                    isActive:
-                        _dateFilter.type == DateFilterType.specificDate,
+                    label: 'Rentang Kustom',
+                    isActive: _dateFilter.type == DateFilterType.customRange,
                     color: typeColor,
-                    onTap: () {
-                      _pickSpecificDate(
-                          month.year, month.month, typeColor);
-                    },
+                    onTap: () => _pickCustomDateRange(typeColor),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
 
               // Sub-options depending on DateFilterType
-              if (_dateFilter.type == DateFilterType.weekly) ...[
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: List.generate(
-                    lastDayOfMonth >= 29 ? 5 : 4,
-                    (index) {
-                      final weekNum = index + 1;
-                      final startDay = (weekNum - 1) * 7 + 1;
-                      final endDay = (weekNum * 7).clamp(1, lastDayOfMonth);
-                      final isSelected = _dateFilter.weekIndex == weekNum;
-
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _dateFilter = DateFilter(
-                              type: DateFilterType.weekly,
-                              weekIndex: weekNum,
-                            );
-                          });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? containerColor
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: isSelected
-                                  ? typeColor
-                                  : Theme.of(context)
-                                      .colorScheme
-                                      .outlineVariant,
-                              width: 1.5,
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Minggu $weekNum',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: isSelected
-                                      ? typeColor
-                                      : Theme.of(context)
-                                          .colorScheme
-                                          .onSurface,
-                                ),
-                              ),
-                              Text(
-                                'Tgl $startDay - $endDay',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: isSelected
-                                      ? typeColor.withValues(alpha: 0.8)
-                                      : Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+              if (_dateFilter.type == DateFilterType.monthYear) ...[
+                _MonthYearPicker(
+                  year: _pickerYear,
+                  month: _pickerMonth,
+                  color: typeColor,
+                  containerColor: containerColor,
+                  onChanged: (y, m) {
+                    setState(() {
+                      _pickerYear = y;
+                      _pickerMonth = m;
+                      _dateFilter = DateFilter(
+                        type: DateFilterType.monthYear,
+                        filterYear: y,
+                        filterMonth: m,
                       );
-                    },
-                  ),
+                    });
+                  },
                 ),
-              ] else if (_dateFilter.type == DateFilterType.specificDate) ...[
+              ] else if (_dateFilter.type == DateFilterType.fullYear) ...[
+                _YearPicker(
+                  year: _pickerYear,
+                  color: typeColor,
+                  containerColor: containerColor,
+                  onChanged: (y) {
+                    setState(() {
+                      _pickerYear = y;
+                      _dateFilter = DateFilter(
+                        type: DateFilterType.fullYear,
+                        filterYear: y,
+                      );
+                    });
+                  },
+                ),
+              ] else if (_dateFilter.type == DateFilterType.customRange) ...[
                 GestureDetector(
-                  onTap: () =>
-                      _pickSpecificDate(month.year, month.month, typeColor),
+                  onTap: () => _pickCustomDateRange(typeColor),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 14, vertical: 12),
@@ -314,15 +298,15 @@ class _TransactionFilterSheetState
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.event_available_rounded,
+                        Icon(Icons.date_range_rounded,
                             size: 20, color: typeColor),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            _dateFilter.specificDate != null
-                                ? DateFormat('EEEE, dd MMMM yyyy', 'id_ID')
-                                    .format(_dateFilter.specificDate!)
-                                : 'Ketuk untuk memilih tanggal',
+                            _dateFilter.rangeStart != null &&
+                                    _dateFilter.rangeEnd != null
+                                ? '${DateFormat('d MMM yyyy', 'id_ID').format(_dateFilter.rangeStart!)} – ${DateFormat('d MMM yyyy', 'id_ID').format(_dateFilter.rangeEnd!)}'
+                                : 'Ketuk untuk memilih rentang tanggal',
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
@@ -409,6 +393,180 @@ class _TransactionFilterSheetState
           ),
         ),
       ),
+    );
+  }
+}
+
+// ── Month & Year Picker Widget ──────────────────────────────
+class _MonthYearPicker extends StatelessWidget {
+  final int year;
+  final int month;
+  final Color color;
+  final Color containerColor;
+  final void Function(int year, int month) onChanged;
+
+  const _MonthYearPicker({
+    required this.year,
+    required this.month,
+    required this.color,
+    required this.containerColor,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final months = List.generate(12, (i) {
+      final dt = DateTime(2024, i + 1);
+      return DateFormat('MMM', 'id_ID').format(dt);
+    });
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Year selector
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.chevron_left, size: 20),
+              onPressed: () => onChanged(year - 1, month),
+              visualDensity: VisualDensity.compact,
+            ),
+            Text(
+              '$year',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.chevron_right, size: 20),
+              onPressed: () => onChanged(year + 1, month),
+              visualDensity: VisualDensity.compact,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        // Month grid
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: List.generate(12, (i) {
+            final m = i + 1;
+            final isSelected = m == month;
+            return GestureDetector(
+              onTap: () => onChanged(year, m),
+              child: Container(
+                width: (MediaQuery.of(context).size.width - 40 - 30) / 4,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: isSelected ? containerColor : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isSelected
+                        ? color
+                        : Theme.of(context).colorScheme.outlineVariant,
+                    width: isSelected ? 1.5 : 1,
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  months[i],
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+                    color: isSelected
+                        ? color
+                        : Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Year Picker Widget ──────────────────────────────────────
+class _YearPicker extends StatelessWidget {
+  final int year;
+  final Color color;
+  final Color containerColor;
+  final ValueChanged<int> onChanged;
+
+  const _YearPicker({
+    required this.year,
+    required this.color,
+    required this.containerColor,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Center a 6-year window around the selected year (minimum 2015)
+    final startYear = (year - 2).clamp(2015, 2095);
+    final years = List.generate(6, (i) => startYear + i);
+
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.chevron_left, size: 20),
+              onPressed: () => onChanged(year - 1),
+              visualDensity: VisualDensity.compact,
+            ),
+            Text(
+              '$year',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.chevron_right, size: 20),
+              onPressed: () => onChanged(year + 1),
+              visualDensity: VisualDensity.compact,
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: years.map((y) {
+            final isSelected = y == year;
+            return GestureDetector(
+              onTap: () => onChanged(y),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isSelected ? containerColor : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isSelected
+                        ? color
+                        : Theme.of(context).colorScheme.outlineVariant,
+                    width: isSelected ? 1.5 : 1,
+                  ),
+                ),
+                child: Text(
+                  '$y',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+                    color: isSelected
+                        ? color
+                        : Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 }

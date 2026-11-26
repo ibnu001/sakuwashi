@@ -274,6 +274,68 @@ class TransactionDb {
     return maps.map((m) => TransactionModel.fromMap(m)).toList();
   }
 
+  /// Fetch transactions within an arbitrary date range [start, end).
+  /// If [end] is null, fetches all transactions from [start] onwards (open-ended).
+  static Future<List<TransactionModel>> getByDateRange(
+    DateTime start,
+    DateTime? end, {
+    String? type,
+    String? query,
+  }) async {
+    final db = await database;
+    final conditions = <String>['date >= ?'];
+    final args = <Object?>[start.toIso8601String()];
+
+    if (end != null) {
+      conditions.add('date < ?');
+      args.add(end.toIso8601String());
+    }
+    if (type != null) {
+      conditions.add('type = ?');
+      args.add(type);
+    }
+    if (query != null && query.isNotEmpty) {
+      conditions.add('(note LIKE ? OR category LIKE ?)');
+      args.add('%$query%');
+      args.add('%$query%');
+    }
+
+    final maps = await db.query(
+      'transactions',
+      where: conditions.join(' AND '),
+      whereArgs: args,
+      orderBy: 'date DESC',
+    );
+    return maps.map((m) => TransactionModel.fromMap(m)).toList();
+  }
+
+  /// Fetch transactions for a full calendar year.
+  static Future<List<TransactionModel>> getByYear(int year) async {
+    return getByDateRange(
+      DateTime(year, 1, 1),
+      DateTime(year + 1, 1, 1),
+    );
+  }
+
+  /// Count transactions in a date range.
+  static Future<int> countByDateRange(DateTime start, DateTime end) async {
+    final db = await database;
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM transactions WHERE date >= ? AND date < ?',
+      [start.toIso8601String(), end.toIso8601String()],
+    );
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  /// Count all transactions.
+  static Future<int> countAll() async {
+    final db = await database;
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM transactions',
+    );
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
   /// Search by note or category.
   static Future<List<TransactionModel>> search(
     String query,

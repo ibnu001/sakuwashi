@@ -1,46 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../../core/theme/app_theme_extension.dart';
 import '../data/transaction_db.dart';
 import '../providers/transaction_provider.dart';
 import 'expense_list_view.dart';
+import 'period_switcher.dart';
 
 class IncomeListView extends ConsumerWidget {
   const IncomeListView({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final month = ref.watch(selectedMonthProvider);
     final listAsync = ref.watch(incomeListProvider);
     final appColors = Theme.of(context).extension<AppColorsExtension>()!;
-    final monthLabel = DateFormat(
-      'MMMM yyyy',
-      'id_ID',
-    ).format(DateTime(month.year, month.month));
+    final dateFilter = ref.watch(dateFilterProvider);
 
     return SafeArea(
       child: Column(
         children: [
-          // ── Month Switcher ─────────────────────────────
-          MonthSwitcher(
-            label: monthLabel,
-            onPrev: () {
-              ref.read(dateFilterProvider.notifier).state = const DateFilter();
-              ref.read(selectedMonthProvider.notifier).state = month.prev();
-            },
-            onNext: () {
-              ref.read(dateFilterProvider.notifier).state = const DateFilter();
-              ref.read(selectedMonthProvider.notifier).state = month.next();
-            },
+          // ── Period Switcher ─────────────────────────────
+          PeriodSwitcher(
+            filteredLabel:
+                dateFilter.isIndependentRange ? dateFilter.getLabel() : null,
           ),
           // ── Total Card ─────────────────────────────────
           listAsync.when(
             data: (list) {
               final total = list.fold<int>(0, (s, t) => s + t.amount);
               return TotalCard(
-                label: 'Total Pemasukan bulan ini',
+                label: 'Total Pemasukan',
                 amount: total,
                 color: appColors.incomeColor,
                 containerColor: appColors.incomeContainer,
@@ -58,7 +47,7 @@ class IncomeListView extends ConsumerWidget {
                 if (list.isEmpty) {
                   return const Center(
                     child: Text(
-                      'Belum ada pemasukan bulan ini',
+                      'Belum ada pemasukan',
                       style: TextStyle(color: Colors.grey),
                     ),
                   );
@@ -72,7 +61,7 @@ class IncomeListView extends ConsumerWidget {
                     containerColor: appColors.incomeContainer,
                     onDismissed: () async {
                       final deleted = list[i];
-                      await ref.read(incomeListProvider.notifier).refresh();
+                      await refreshAllTransactions(ref);
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
@@ -83,10 +72,7 @@ class IncomeListView extends ConsumerWidget {
                               await TransactionDb.insert(
                                 deleted.copyWith(id: null),
                               );
-                              ref.read(incomeListProvider.notifier).refresh();
-                              ref
-                                  .read(monthlySummaryProvider.notifier)
-                                  .refresh();
+                              await refreshAllTransactions(ref);
                             },
                           ),
                         ),

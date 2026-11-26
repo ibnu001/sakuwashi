@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/constants/app_color_defaults.dart';
 import '../../core/theme/app_theme_extension.dart';
@@ -49,6 +50,11 @@ class SettingsScreen extends ConsumerWidget {
           _ColorCustomizer(themeState: themeState),
           const SizedBox(height: 20),
 
+          // ── Siklus Gajian ────────────────────────────
+          const _SectionHeader(title: 'Siklus Periode'),
+          _PaydayCycleToggle(),
+          const SizedBox(height: 20),
+
           // ── Kategori Transaksi ─────────────────────────
           const _SectionHeader(title: 'Kategori Transaksi'),
           _buildSettingsTile(
@@ -81,15 +87,15 @@ class SettingsScreen extends ConsumerWidget {
             context: context,
             icon: Icons.download_outlined,
             title: 'Unduh CSV',
-            subtitle: 'Simpan semua transaksi ke file CSV',
-            onTap: () => _exportCSV(context, ref, download: true),
+            subtitle: 'Simpan transaksi ke file CSV (per bulan/tahun/semua)',
+            onTap: () => _showExportScopeSheet(context, ref, download: true),
           ),
           _buildSettingsTile(
             context: context,
             icon: Icons.share_outlined,
             title: 'Bagikan CSV',
             subtitle: 'Bagikan file CSV ke aplikasi lain',
-            onTap: () => _exportCSV(context, ref, download: false),
+            onTap: () => _showExportScopeSheet(context, ref, download: false),
           ),
           const SizedBox(height: 20),
 
@@ -280,14 +286,44 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
-  Future<void> _exportCSV(
+  Future<void> _showExportScopeSheet(
     BuildContext context,
     WidgetRef ref, {
     required bool download,
   }) async {
+    final selection = await showModalBottomSheet<_ExportScopeResult>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ExportScopeSheet(download: download),
+    );
+
+    if (selection == null || !context.mounted) return;
+
     try {
+      final count = await CsvService.countForScope(
+        scope: selection.scope,
+        year: selection.year,
+        month: selection.month,
+      );
+
+      if (!context.mounted) return;
+      if (count == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Tidak ada transaksi untuk diekspor pada periode tersebut'),
+          ),
+        );
+        return;
+      }
+
       if (download) {
-        final path = await CsvService.exportWithSystemFilePicker();
+        final path = await CsvService.exportWithSystemFilePicker(
+          scope: selection.scope,
+          year: selection.year,
+          month: selection.month,
+        );
         if (!context.mounted) return;
         if (path != null) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -298,7 +334,11 @@ class SettingsScreen extends ConsumerWidget {
           );
         }
       } else {
-        await CsvService.shareCSV();
+        await CsvService.shareCSV(
+          scope: selection.scope,
+          year: selection.year,
+          month: selection.month,
+        );
       }
     } catch (e) {
       if (!context.mounted) return;
@@ -1055,6 +1095,532 @@ class _CsvImportConfirmSheetState extends State<_CsvImportConfirmSheet> {
                   const SizedBox(height: 2),
                   Text(
                     description,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Payday Cycle Toggle ─────────────────────────────────────
+class _PaydayCycleToggle extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final enabled = ref.watch(
+      settingsControllerProvider.select((s) => s.useDynamicPaydayCycle),
+    );
+    final theme = Theme.of(context);
+
+    Future<void> toggle(bool value) async {
+      await ref
+          .read(settingsControllerProvider.notifier)
+          .setUseDynamicPaydayCycle(value);
+      ref.read(selectedPaydayCycleStartProvider.notifier).state = null;
+      await refreshAllTransactions(ref);
+    }
+
+    return GestureDetector(
+      onTap: () => toggle(!enabled),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: theme.colorScheme.outlineVariant,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.event_repeat_outlined,
+              size: 22,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Siklus Otomatis Setelah Gajian',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Aktifkan untuk menghitung periode baru setiap kali ada pemasukan kategori Gaji (default: kalender tanggal 1–31)',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Switch.adaptive(
+              value: enabled,
+              onChanged: toggle,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Scoped CSV Export Sheet ─────────────────────────────────
+class _ExportScopeResult {
+  final CsvExportScope scope;
+  final int? year;
+  final int? month;
+
+  const _ExportScopeResult({
+    required this.scope,
+    this.year,
+    this.month,
+  });
+}
+
+class _ExportScopeSheet extends StatefulWidget {
+  final bool download;
+
+  const _ExportScopeSheet({required this.download});
+
+  @override
+  State<_ExportScopeSheet> createState() => _ExportScopeSheetState();
+}
+
+class _ExportScopeSheetState extends State<_ExportScopeSheet> {
+  CsvExportScope _scope = CsvExportScope.monthly;
+  late int _year;
+  late int _month;
+  int? _previewCount;
+  bool _loadingCount = true;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _year = now.year;
+    _month = now.month;
+    _refreshCount();
+  }
+
+  Future<void> _refreshCount() async {
+    setState(() => _loadingCount = true);
+    final count = await CsvService.countForScope(
+      scope: _scope,
+      year: _year,
+      month: _month,
+    );
+    if (!mounted) return;
+    setState(() {
+      _previewCount = count;
+      _loadingCount = false;
+    });
+  }
+
+  void _selectScope(CsvExportScope scope) {
+    setState(() => _scope = scope);
+    _refreshCount();
+  }
+
+  void _changeYear(int year) {
+    setState(() => _year = year);
+    _refreshCount();
+  }
+
+  void _changeMonth(int month) {
+    setState(() => _month = month);
+    _refreshCount();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final months = List.generate(
+      12,
+      (i) => DateFormat('MMM', 'id_ID').format(DateTime(2024, i + 1)),
+    );
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        12,
+        20,
+        MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Drag handle
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Header
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      widget.download
+                          ? Icons.download_outlined
+                          : Icons.share_outlined,
+                      color: theme.colorScheme.primary,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.download ? 'Unduh CSV' : 'Bagikan CSV',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          'Pilih cakupan data yang ingin diekspor',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+
+              // Option 1: Ekspor per Bulan
+              _buildScopeOption(
+                theme: theme,
+                scope: CsvExportScope.monthly,
+                title: 'Ekspor per Bulan',
+                subtitle: DateFormat('MMMM yyyy', 'id_ID')
+                    .format(DateTime(_year, _month)),
+              ),
+              if (_scope == CsvExportScope.monthly) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest
+                        .withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: theme.colorScheme.outlineVariant,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.chevron_left, size: 20),
+                            onPressed: () => _changeYear(_year - 1),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          Text(
+                            '$_year',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.chevron_right, size: 20),
+                            onPressed: () => _changeYear(_year + 1),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: List.generate(12, (i) {
+                          final m = i + 1;
+                          final isSelected = m == _month;
+                          return GestureDetector(
+                            onTap: () => _changeMonth(m),
+                            child: Container(
+                              width:
+                                  (MediaQuery.of(context).size.width - 66 - 18) /
+                                      4,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? theme.colorScheme.primaryContainer
+                                    : theme.colorScheme.surface,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? theme.colorScheme.primary
+                                      : theme.colorScheme.outlineVariant,
+                                  width: isSelected ? 1.5 : 1,
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                months[i],
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w700
+                                      : FontWeight.w400,
+                                  color: isSelected
+                                      ? theme.colorScheme.primary
+                                      : theme.colorScheme.onSurface,
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+
+              // Option 2: Ekspor per Tahun
+              _buildScopeOption(
+                theme: theme,
+                scope: CsvExportScope.yearly,
+                title: 'Ekspor per Tahun',
+                subtitle: 'Semua transaksi di tahun $_year',
+              ),
+              if (_scope == CsvExportScope.yearly) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest
+                        .withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: theme.colorScheme.outlineVariant,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.chevron_left, size: 20),
+                        onPressed: () => _changeYear(_year - 1),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        '$_year',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      IconButton(
+                        icon: const Icon(Icons.chevron_right, size: 20),
+                        onPressed: () => _changeYear(_year + 1),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+
+              // Option 3: Ekspor Semua Data (Full Backup)
+              _buildScopeOption(
+                theme: theme,
+                scope: CsvExportScope.all,
+                title: 'Ekspor Semua Data (Full Backup)',
+                subtitle: 'Seluruh riwayat transaksi untuk backup lengkap',
+              ),
+              const SizedBox(height: 16),
+
+              // Preview count banner
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest
+                      .withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: theme.colorScheme.outlineVariant,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _loadingCount
+                          ? Text(
+                              'Menghitung transaksi…',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            )
+                          : Text(
+                              (_previewCount ?? 0) > 0
+                                  ? '$_previewCount transaksi akan diekspor'
+                                  : 'Tidak ada transaksi pada periode ini',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: (_previewCount ?? 0) > 0
+                                    ? theme.colorScheme.onSurface
+                                    : theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Action Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context, null),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Batal'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: _loadingCount
+                          ? null
+                          : () => Navigator.pop(
+                                context,
+                                _ExportScopeResult(
+                                  scope: _scope,
+                                  year: _scope == CsvExportScope.all
+                                      ? null
+                                      : _year,
+                                  month: _scope == CsvExportScope.monthly
+                                      ? _month
+                                      : null,
+                                ),
+                              ),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        widget.download ? 'Simpan CSV' : 'Bagikan CSV',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScopeOption({
+    required ThemeData theme,
+    required CsvExportScope scope,
+    required String title,
+    required String subtitle,
+  }) {
+    final selected = _scope == scope;
+    return GestureDetector(
+      onTap: () => _selectScope(scope),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: selected
+              ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
+              : theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.outlineVariant,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              selected ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: selected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurfaceVariant,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
